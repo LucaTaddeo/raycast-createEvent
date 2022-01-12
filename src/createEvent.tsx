@@ -1,4 +1,12 @@
-import { List, ActionPanel, showToast, ToastStyle, closeMainWindow, showHUD, popToRoot } from "@raycast/api";
+import {
+  List,
+  ActionPanel,
+  showToast,
+  ToastStyle,
+  closeMainWindow,
+  showHUD,
+  popToRoot,
+} from "@raycast/api";
 import { useState, useEffect } from "react";
 
 import { runAppleScriptSync } from "run-applescript";
@@ -11,10 +19,17 @@ import * as chrono from "chrono-node";
 export default function Command() {
   const { state, parse } = useParseEvent();
   let subtitle = sameDay(state.event.startDate, state.event.endDate)
-    ? state.event.startDate.getDay() + " " + state.event.startDate.toLocaleString("default", { month: "long" })
+    ? state.event.startDate.getDay() +
+      " " +
+      state.event.startDate.toLocaleString("default", { month: "long" })
     : "";
   return (
-    <List isLoading={state.isLoading} onSearchTextChange={parse} searchBarPlaceholder="Your event..." throttle>
+    <List
+      isLoading={state.isLoading}
+      onSearchTextChange={parse}
+      searchBarPlaceholder="Your event..."
+      throttle
+    >
       <List.Section title="New Event" subtitle={subtitle}>
         {state.event && <CalendarItem event={state.event} />}
       </List.Section>
@@ -27,7 +42,7 @@ export default function Command() {
  * calendar. It returns a confirmation message after creating the event.
  * @param event the event to be created
  */
-async function createEvent(event: Event) {
+function createEvent(event: Event) {
   runAppleScriptSync(
     'tell application "Calendar" \n tell first calendar \n make new event with properties {summary:"' +
       event.title +
@@ -45,7 +60,44 @@ async function createEvent(event: Event) {
   showToast(
     ToastStyle.Success,
     event.title + " created",
-    "From: " + getDateAndTime(event.startDate) + " \nTo: " + getDateAndTime(event.endDate)
+    "From: " +
+      getDateAndTime(event.startDate) +
+      " \nTo: " +
+      getDateAndTime(event.endDate)
+  );
+}
+
+/**
+ * This function runs an applescript script to open the Calendar app on a given date and create
+ * a new event using Calendar's UI
+ * @param event the event object
+ */
+function createWithCalendarApp(event: Event) {
+  // FIXME: currently, times like 3 to 4 are interpreted in calendar as 15 to 16. Need to specify AM/PM somehow
+  closeMainWindow();
+  showHUD("Creating in Calendar");
+  runAppleScriptSync(
+    'tell application "Calendar" \n	view calendar at date "' +
+      getAppleScriptFriendlyDate(event.startDate) +
+      '" \n end tell \n ' +
+      'tell application "System Events" to tell process "Calendar" \n	keystroke "n" using command down \n	delay 0.5 \n ' +
+      'keystroke "' +
+      event.inputText +
+      '" \n	key code 36 \n end tell'
+  );
+}
+
+/**
+ * This function runs an applescript script to open the Calendar app on a given date
+ * @param date the date object to be opened in Calendar
+ */
+function revealDate(date: Date) {
+  closeMainWindow();
+  showHUD("Showing date in Calendar");
+  runAppleScriptSync(
+    'tell application "Calendar" \n switch view to week view \n view calendar at date "' +
+      getAppleScriptFriendlyDate(date) +
+      '" \n end tell'
   );
 }
 
@@ -60,11 +112,21 @@ function CalendarItem({ event }: { event: Event }) {
       title={event.title}
       subtitle={getEventDateString(event.startDate, event.endDate)}
       // TODO: add event's duration as accessoryTitle
-      // TODO: add more actions, like checking calendar's availability (?)
       actions={
         <ActionPanel>
           <ActionPanel.Section>
-            <ActionPanel.Item title="Create Event" onAction={() => createEvent(event)} />
+            <ActionPanel.Item
+              title="Create Event"
+              onAction={() => createEvent(event)}
+            />
+            <ActionPanel.Item
+              title="Create in Calendar"
+              onAction={() => createWithCalendarApp(event)}
+            />
+            <ActionPanel.Item
+              title="Show Date in Calendar"
+              onAction={() => revealDate(event.startDate)}
+            />
           </ActionPanel.Section>
         </ActionPanel>
       }
@@ -78,7 +140,10 @@ function CalendarItem({ event }: { event: Event }) {
  * @returns the state, containing a loading variable and the parsed event
  */
 function useParseEvent() {
-  const [state, setState] = useState<ParseState>({ event: getDefaultEvent(), isLoading: true });
+  const [state, setState] = useState<ParseState>({
+    event: getDefaultEvent(),
+    isLoading: true,
+  });
   useEffect(() => {
     parse("");
     return () => {};
@@ -99,7 +164,11 @@ function useParseEvent() {
       }));
     } catch (error) {
       console.error("parsing error", error);
-      showToast(ToastStyle.Failure, "Could not parse the string", String(error));
+      showToast(
+        ToastStyle.Failure,
+        "Could not parse the string",
+        String(error)
+      );
     }
   }
 
@@ -168,7 +237,12 @@ function getEventDateString(firstDate: Date, secondDate: Date): string {
  * @returns a string with the format "HH:MM"
  */
 function getTime(date: Date): string {
-  return date.getHours() + ":" + (date.getMinutes() < 10 ? "0" : "") + date.getMinutes();
+  return (
+    date.getHours() +
+    ":" +
+    (date.getMinutes() < 10 ? "0" : "") +
+    date.getMinutes()
+  );
 }
 
 /**
@@ -199,12 +273,17 @@ function getDateAndTime(date: Date): string {
 function getDefaultEvent(): Event {
   let title = "Event";
   let startDate = new Date();
-  let endDate = new Date(new Date(startDate).setHours(startDate.getHours() + 1));
+  let endDate = new Date(
+    new Date(startDate).setHours(startDate.getHours() + 1)
+  );
+
+  let inputText = title + " from " + getDateAndTime(startDate) + " to " + getDateAndTime(endDate);
 
   return {
     title: title,
     startDate: startDate,
     endDate: endDate,
+    inputText: inputText,
   };
 }
 
@@ -236,6 +315,7 @@ function performParsing(input: string): Event {
 
   // Start parsing input
   if (input) {
+    event.inputText = input;
     const parsed = chrono.parse(input);
     if (parsed.length > 0) {
       // Check for a start date
@@ -247,7 +327,13 @@ function performParsing(input: string): Event {
           event.endDate = parsed[0].end.date();
         } else {
           // By default, set end date as start date + 1 hour
-          event.endDate = new Date(new Date(parsed[0].start.date().setHours(parsed[0].start.date().getHours() + 1)));
+          event.endDate = new Date(
+            new Date(
+              parsed[0].start
+                .date()
+                .setHours(parsed[0].start.date().getHours() + 1)
+            )
+          );
         }
       }
       event.title = getTitle(input, parsed[0].text) || "Event"; // Remove the date string from the input, to obtain the cleaned title
@@ -268,4 +354,5 @@ interface Event {
   title: string;
   startDate: Date;
   endDate: Date;
+  inputText: string;
 }
