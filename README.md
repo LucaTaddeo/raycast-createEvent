@@ -1,2 +1,2 @@
 # raycast-createEvent
-Raycast extension to create a new calendar event
+This extension allows to quickly create new events to your calendar! Note that the events are automatically created to the first (i.e. upper-most) calendar in your MacOS Calendar App
